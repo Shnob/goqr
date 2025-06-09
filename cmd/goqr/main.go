@@ -19,7 +19,7 @@ func main() {
 
 	file, err := os.Create("qr.png")
 	if err != nil {
-		fmt.Printf("Error creating file: %s\n", err.Error());
+		fmt.Printf("Error creating file: %s\n", err.Error())
 		return
 	}
 

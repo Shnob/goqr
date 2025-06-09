@@ -17,14 +17,14 @@ func NewQr(qrType QrType) (qr *Qr, err error) {
 
 	qr = &Qr{
 		QrType: qrType,
-	};
+	}
 
 	return
 }
 
 func (q *Qr) GenerateBlankImage() (img *image.Gray) {
-	wid := int(q.QrType.Width());
-	img = image.NewGray(image.Rect(0, 0, wid, wid));
+	wid := int(q.QrType.Width())
+	img = image.NewGray(image.Rect(0, 0, wid, wid))
 
 	// Make image white
 	for x := range wid {
@@ -35,10 +35,14 @@ func (q *Qr) GenerateBlankImage() (img *image.Gray) {
 
 	// Add timing patterns
 	timingOffset := 6
-	if q.QrType.IsMicro() { timingOffset = 0 }
+	if q.QrType.IsMicro() {
+		timingOffset = 0
+	}
 
 	for i := range wid {
-		if i % 2 == 1 { continue }
+		if i%2 == 1 {
+			continue
+		}
 
 		img.SetGray(i, timingOffset, color.Gray{0})
 		img.SetGray(timingOffset, i, color.Gray{0})
@@ -49,18 +53,18 @@ func (q *Qr) GenerateBlankImage() (img *image.Gray) {
 
 	// Optionally add the top right and bottom left finder patterns
 	if !q.QrType.IsMicro() {
-		imageAddFinderPattern(img, wid - 7, 0)
-		imageAddFinderPattern(img, 0, wid - 7)
+		imageAddFinderPattern(img, wid-7, 0)
+		imageAddFinderPattern(img, 0, wid-7)
 	}
 
 	// Add alignment patterns
 	alignmentPositions := alignmentPositions[q.QrType]
-	
+
 	for i, x := range alignmentPositions {
 		for j, y := range alignmentPositions {
 			if i == 0 && j == 0 ||
-				i == 0 && j == len(alignmentPositions) - 1 ||
-				j == 0 && i == len(alignmentPositions) - 1 {
+				i == 0 && j == len(alignmentPositions)-1 ||
+				j == 0 && i == len(alignmentPositions)-1 {
 				continue
 			}
 
@@ -68,16 +72,18 @@ func (q *Qr) GenerateBlankImage() (img *image.Gray) {
 		}
 	}
 
-
 	return
 }
 
 func imageAddFinderPattern(img *image.Gray, left, top int) {
 	for i := range 7 {
 		for j := range 7 {
-			if (i == 1 || i == 5) && (j != 0 && j != 6) {continue}
-			if (j == 1 || j == 5) && (i != 0 && i != 6) {continue}
-			img.SetGray(i + left, j + top, color.Gray{0})
+			if (i == 1 || i == 5) && (j != 0 && j != 6) ||
+				(j == 1 || j == 5) && (i != 0 && i != 6) {
+				continue
+			}
+
+			img.SetGray(i+left, j+top, color.Gray{0})
 		}
 	}
 }
@@ -85,22 +91,25 @@ func imageAddFinderPattern(img *image.Gray, left, top int) {
 func imageAddAlignmentPattern(img *image.Gray, x, y int) {
 	for i := range 5 {
 		for j := range 5 {
-			if (i == 1 || i == 3) && (j != 0 && j != 4) {continue}
-			if (j == 1 || j == 3) && (i != 0 && i != 4) {continue}
-			img.SetGray(i + x - 2, j + y - 2, color.Gray{0})
+			if (i == 1 || i == 3) && (j != 0 && j != 4) ||
+				(j == 1 || j == 3) && (i != 0 && i != 4) {
+				continue
+			}
+
+			img.SetGray(i+x-2, j+y-2, color.Gray{0})
 		}
 	}
 }
 
-// QrType 1-40 -> version 1-40 
+// QrType 1-40 -> version 1-40
 // QrType 41-44 -> micro 1-4
 type QrType uint8
 
 func (t QrType) Width() int {
 	if t <= 40 {
-		return 4 * int(t) + 17
+		return 4*int(t) + 17
 	} else {
-		return 2 * int(t - 40) + 9
+		return 2*int(t-40) + 9
 	}
 }
 
