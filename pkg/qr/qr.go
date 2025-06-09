@@ -1,12 +1,14 @@
 package qr
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 )
 
 type Qr struct {
-	QrType QrType
+	QrType         QrType
+	encodingRegion EncodingRegion
 }
 
 func NewQr(qrType QrType) (qr *Qr, err error) {
@@ -16,7 +18,8 @@ func NewQr(qrType QrType) (qr *Qr, err error) {
 	}
 
 	qr = &Qr{
-		QrType: qrType,
+		QrType:         qrType,
+		encodingRegion: GenerateEncodingRegion(qrType),
 	}
 
 	return
@@ -75,6 +78,21 @@ func (q *Qr) GenerateBlankImage() (img *image.Gray) {
 	return
 }
 
+func (q *Qr) GenerateDebugImage() (img *image.Gray) {
+	img = q.GenerateBlankImage()
+
+	for i, block := range q.encodingRegion {
+		// Color based on which block the module is in
+		col := color.Gray{uint8(i)%8*16 + 64}
+
+		for _, module := range block {
+			img.Set(int(module.X), int(module.Y), col)
+		}
+	}
+
+	return
+}
+
 func imageAddFinderPattern(img *image.Gray, left, top int) {
 	for i := range 7 {
 		for j := range 7 {
@@ -115,6 +133,75 @@ func (t QrType) Width() int {
 
 func (t QrType) IsMicro() bool {
 	return t > 40
+}
+
+type qrCoord struct {
+	X uint8
+	Y uint8
+}
+
+type EncodingRegion [][]qrCoord
+
+// Generates the layout of blocks in the encoding region, given a QR type
+func GenerateEncodingRegion(qrType QrType) EncodingRegion {
+	er := make([][]qrCoord, 0)
+
+	wid := uint8(qrType.Width())
+	// The X coordinate of the vertical timing pattern
+	timingX := 5
+	if qrType > 40 {
+		timingX = 0
+	}
+
+	isGoingUp := true
+	currPos := qrCoord{wid - 1, wid - 1}
+
+	nextPos := func() {
+		if (currPos.X%2 == 0 && currPos.X > uint8(timingX)) ||
+			(currPos.X%2 == 1 && currPos.X < uint8(timingX)) ||
+			currPos.X == uint8(timingX) {
+			currPos.X -= 1
+		} else {
+			currPos.X += 1
+			if isGoingUp {
+				currPos.Y -= 1
+			} else {
+				currPos.Y += 1
+			}
+		}
+
+		if currPos.Y >= wid {
+			currPos.X -= 2
+			if isGoingUp {
+				currPos.Y += 1
+				isGoingUp = false
+			} else {
+				currPos.Y -= 1
+				isGoingUp = true
+			}
+		}
+	}
+
+	currBlock := make([]qrCoord, 0, 8)
+
+	addPointToBlock := func() {
+		currBlock = append(currBlock, currPos)
+
+		if len(currBlock) == 8 {
+			// Push the block to the list of blocks
+			er = append(er, currBlock)
+			// Make a new block
+			currBlock = make([]qrCoord, 0, 8)
+		}
+	}
+
+	for currPos.X < wid && currPos.Y < wid {
+		fmt.Printf("Point %d,%d\n", currPos.X, currPos.Y)
+		addPointToBlock()
+		nextPos()
+	}
+
+	return er
 }
 
 type QrError struct {
