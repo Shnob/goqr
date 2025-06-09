@@ -37,10 +37,7 @@ func (q *Qr) GenerateBlankImage() (img *image.Gray) {
 	}
 
 	// Add timing patterns
-	timingOffset := 6
-	if q.QrType.IsMicro() {
-		timingOffset = 0
-	}
+	timingOffset := q.QrType.TimingPatternCoord()
 
 	for i := range wid {
 		if i%2 == 1 {
@@ -83,7 +80,7 @@ func (q *Qr) GenerateDebugImage() (img *image.Gray) {
 
 	for i, block := range q.encodingRegion {
 		// Color based on which block the module is in
-		col := color.Gray{uint8(i)%8*16 + 64}
+		col := color.Gray{uint8(i)%8*24 + 32}
 
 		for _, module := range block {
 			img.Set(int(module.X), int(module.Y), col)
@@ -135,6 +132,78 @@ func (t QrType) IsMicro() bool {
 	return t > 40
 }
 
+func (t QrType) TimingPatternCoord() int {
+	if t <= 40 {
+		return 6
+	} else {
+		return 0
+	}
+}
+
+func (t QrType) IsModuleReserved(qrCoord qrCoord) bool {
+	wid := t.Width()
+
+	// Timing patterns
+	if qrCoord.X == uint8(t.TimingPatternCoord()) ||
+		qrCoord.Y == uint8(t.TimingPatternCoord()) {
+		return true
+	}
+
+	// Top left finder pattern, separator, and format information
+	if qrCoord.X < 9 && qrCoord.Y < 9 {
+		return true
+	}
+
+	// Top right and bottom left finder patterns, separators, and format information
+	if !t.IsMicro() {
+		// Top right
+		if qrCoord.X >= uint8(wid)-8 && qrCoord.Y < 9 {
+			return true
+		}
+		// Bottom left
+		if qrCoord.Y >= uint8(wid)-8 && qrCoord.X < 9 {
+			return true
+		}
+	}
+
+	// Version information
+	if t >= 7 {
+		// Top right
+		if qrCoord.Y <= 6 && qrCoord.X >= uint8(wid) - 11 {
+			return true
+		}
+		// Bottom left
+		if qrCoord.X <= 6 && qrCoord.Y >= uint8(wid) - 11 {
+			return true
+		}
+	}
+
+	// Alignment patterns
+	alignmentPositions := alignmentPositions[t]
+
+	for i, alignPosX := range alignmentPositions {
+		// Check if X coordinate is close to an alignPosX
+		if qrCoord.X >= uint8(alignPosX)-2 &&
+			qrCoord.X <= uint8(alignPosX)+2 {
+			// If so, check if Y coordinate is close to an alignPosY
+			for j, alignPosY := range alignmentPositions {
+				// (skip the non-existent alignment patterns)
+				if i == 0 && j == 0 ||
+					i == 0 && j == len(alignmentPositions)-1 ||
+					j == 0 && i == len(alignmentPositions)-1 {
+					continue
+				}
+				if qrCoord.Y >= uint8(alignPosY)-2 &&
+					qrCoord.Y <= uint8(alignPosY)+2 {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
 type qrCoord struct {
 	X uint8
 	Y uint8
@@ -148,10 +217,7 @@ func GenerateEncodingRegion(qrType QrType) EncodingRegion {
 
 	wid := uint8(qrType.Width())
 	// The X coordinate of the vertical timing pattern
-	timingX := 5
-	if qrType > 40 {
-		timingX = 0
-	}
+	timingX := qrType.TimingPatternCoord()
 
 	isGoingUp := true
 	currPos := qrCoord{wid - 1, wid - 1}
@@ -197,7 +263,9 @@ func GenerateEncodingRegion(qrType QrType) EncodingRegion {
 
 	for currPos.X < wid && currPos.Y < wid {
 		fmt.Printf("Point %d,%d\n", currPos.X, currPos.Y)
-		addPointToBlock()
+		if !qrType.IsModuleReserved(currPos) {
+			addPointToBlock()
+		}
 		nextPos()
 	}
 
