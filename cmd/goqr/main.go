@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	qr, err := qr.NewQr(7)
+	qr, err := qr.NewQr(2)
 	if err != nil {
 		fmt.Printf("Error creating QR: %s\n", err.Error())
 		return

@@ -6,7 +6,8 @@ import (
 )
 
 type Qr struct {
-	QrType QrType
+	QrType         QrType
+	encodingRegion EncodingRegion
 }
 
 func NewQr(qrType QrType) (qr *Qr, err error) {
@@ -16,7 +17,8 @@ func NewQr(qrType QrType) (qr *Qr, err error) {
 	}
 
 	qr = &Qr{
-		QrType: qrType,
+		QrType:         qrType,
+		encodingRegion: GenerateEncodingRegion(qrType),
 	}
 
 	return
@@ -34,10 +36,7 @@ func (q *Qr) GenerateBlankImage() (img *image.Gray) {
 	}
 
 	// Add timing patterns
-	timingOffset := 6
-	if q.QrType.IsMicro() {
-		timingOffset = 0
-	}
+	timingOffset := q.QrType.TimingPatternCoord()
 
 	for i := range wid {
 		if i%2 == 1 {
@@ -69,6 +68,21 @@ func (q *Qr) GenerateBlankImage() (img *image.Gray) {
 			}
 
 			imageAddAlignmentPattern(img, x, y)
+		}
+	}
+
+	return
+}
+
+func (q *Qr) GenerateDebugImage() (img *image.Gray) {
+	img = q.GenerateBlankImage()
+
+	for i, block := range q.encodingRegion {
+		// Color based on which block the module is in
+		col := color.Gray{uint8(i)%8*24 + 32}
+
+		for _, module := range block {
+			img.Set(int(module.X), int(module.Y), col)
 		}
 	}
 
@@ -115,6 +129,152 @@ func (t QrType) Width() int {
 
 func (t QrType) IsMicro() bool {
 	return t > 40
+}
+
+func (t QrType) TimingPatternCoord() int {
+	if t <= 40 {
+		return 6
+	} else {
+		return 0
+	}
+}
+
+func (t QrType) IsModuleReserved(qrCoord qrCoord) bool {
+	wid := t.Width()
+
+	// Timing patterns
+	if qrCoord.X == uint8(t.TimingPatternCoord()) ||
+		qrCoord.Y == uint8(t.TimingPatternCoord()) {
+		return true
+	}
+
+	// Top left finder pattern, separator, and format information
+	if qrCoord.X < 9 && qrCoord.Y < 9 {
+		return true
+	}
+
+	// Top right and bottom left finder patterns, separators, and format information
+	if !t.IsMicro() {
+		// Top right
+		if qrCoord.X >= uint8(wid)-8 && qrCoord.Y < 9 {
+			return true
+		}
+		// Bottom left
+		if qrCoord.Y >= uint8(wid)-8 && qrCoord.X < 9 {
+			return true
+		}
+	}
+
+	// Version information
+	if t >= 7 && t <= 40 {
+		// Top right
+		if qrCoord.Y <= 6 && qrCoord.X >= uint8(wid)-11 {
+			return true
+		}
+		// Bottom left
+		if qrCoord.X <= 6 && qrCoord.Y >= uint8(wid)-11 {
+			return true
+		}
+	}
+
+	// Alignment patterns
+	alignmentPositions := alignmentPositions[t]
+
+	for i, alignPosX := range alignmentPositions {
+		// Check if X coordinate is close to an alignPosX
+		if qrCoord.X >= uint8(alignPosX)-2 &&
+			qrCoord.X <= uint8(alignPosX)+2 {
+			// If so, check if Y coordinate is close to an alignPosY
+			for j, alignPosY := range alignmentPositions {
+				// (skip the non-existent alignment patterns)
+				if i == 0 && j == 0 ||
+					i == 0 && j == len(alignmentPositions)-1 ||
+					j == 0 && i == len(alignmentPositions)-1 {
+					continue
+				}
+				if qrCoord.Y >= uint8(alignPosY)-2 &&
+					qrCoord.Y <= uint8(alignPosY)+2 {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+type qrCoord struct {
+	X uint8
+	Y uint8
+}
+
+type EncodingRegion [][]qrCoord
+
+// Generates the layout of blocks in the encoding region, given a QR type
+func GenerateEncodingRegion(qrType QrType) EncodingRegion {
+	er := make([][]qrCoord, 0)
+
+	wid := uint8(qrType.Width())
+	// The X coordinate of the vertical timing pattern
+	timingX := qrType.TimingPatternCoord()
+
+	isGoingUp := true
+	currPos := qrCoord{wid - 1, wid - 1}
+
+	nextPos := func() {
+		if (currPos.X%2 == 0 && currPos.X > uint8(timingX)) ||
+			(currPos.X%2 == 1 && currPos.X < uint8(timingX)) ||
+			currPos.X == uint8(timingX) {
+			currPos.X -= 1
+		} else {
+			currPos.X += 1
+			if isGoingUp {
+				currPos.Y -= 1
+			} else {
+				currPos.Y += 1
+			}
+		}
+
+		if currPos.Y >= wid {
+			currPos.X -= 2
+			if isGoingUp {
+				currPos.Y += 1
+				isGoingUp = false
+			} else {
+				currPos.Y -= 1
+				isGoingUp = true
+			}
+		}
+	}
+
+	currBlock := make([]qrCoord, 0, 8)
+	blockNumber := 0
+
+	addPointToBlock := func() {
+		currBlock = append(currBlock, currPos)
+
+		// If block length is 8 OR special case in Micro 1 and Micro 3 where a block is 4 bits
+		// TODO: Special case for Micro 3 should be based on error correction level
+		if len(currBlock) == 8 ||
+			qrType == 41 && blockNumber == 2 && len(currBlock) == 4 ||
+			qrType == 43 && blockNumber == 10 && len(currBlock) == 4 {
+			// Push the block to the list of blocks
+			er = append(er, currBlock)
+			// Make a new block
+			currBlock = make([]qrCoord, 0, 8)
+
+			blockNumber++
+		}
+	}
+
+	for currPos.X < wid && currPos.Y < wid {
+		if !qrType.IsModuleReserved(currPos) {
+			addPointToBlock()
+		}
+		nextPos()
+	}
+
+	return er
 }
 
 type QrError struct {
