@@ -1,7 +1,6 @@
 package qr
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 )
@@ -169,11 +168,11 @@ func (t QrType) IsModuleReserved(qrCoord qrCoord) bool {
 	// Version information
 	if t >= 7 && t <= 40 {
 		// Top right
-		if qrCoord.Y <= 6 && qrCoord.X >= uint8(wid) - 11 {
+		if qrCoord.Y <= 6 && qrCoord.X >= uint8(wid)-11 {
 			return true
 		}
 		// Bottom left
-		if qrCoord.X <= 6 && qrCoord.Y >= uint8(wid) - 11 {
+		if qrCoord.X <= 6 && qrCoord.Y >= uint8(wid)-11 {
 			return true
 		}
 	}
@@ -249,20 +248,26 @@ func GenerateEncodingRegion(qrType QrType) EncodingRegion {
 	}
 
 	currBlock := make([]qrCoord, 0, 8)
+	blockNumber := 0
 
 	addPointToBlock := func() {
 		currBlock = append(currBlock, currPos)
 
-		if len(currBlock) == 8 {
+		// If block length is 8 OR special case in Micro 1 and Micro 3 where a block is 4 bits
+		// TODO: Special case for Micro 3 should be based on error correction level
+		if len(currBlock) == 8 ||
+			qrType == 41 && blockNumber == 2 && len(currBlock) == 4 ||
+			qrType == 43 && blockNumber == 10 && len(currBlock) == 4 {
 			// Push the block to the list of blocks
 			er = append(er, currBlock)
 			// Make a new block
 			currBlock = make([]qrCoord, 0, 8)
+
+			blockNumber++
 		}
 	}
 
 	for currPos.X < wid && currPos.Y < wid {
-		fmt.Printf("Point %d,%d\n", currPos.X, currPos.Y)
 		if !qrType.IsModuleReserved(currPos) {
 			addPointToBlock()
 		}

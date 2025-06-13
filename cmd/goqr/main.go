@@ -15,7 +15,7 @@ func main() {
 		return
 	}
 
-	img := qr.GenerateDebugImage()
+	img := qr.GenerateBlankImage()
 
 	file, err := os.Create("qr.png")
 	if err != nil {
