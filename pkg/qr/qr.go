@@ -167,7 +167,7 @@ func (t QrType) IsModuleReserved(qrCoord qrCoord) bool {
 	}
 
 	// Version information
-	if t >= 7 {
+	if t >= 7 && t <= 40 {
 		// Top right
 		if qrCoord.Y <= 6 && qrCoord.X >= uint8(wid) - 11 {
 			return true
